@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
+import { formatMessageTime } from "@/utils/formatTime";
 
 export default function ChatPage() {
   const { userId: otherClerkId } = useParams<{ userId: string }>();
@@ -29,11 +30,13 @@ export default function ChatPage() {
   // Real-time messages
   const messages = useQuery(
     api.messages.getMessages,
-    conversationId ? { conversationId } : "skip"
+    conversationId ? { conversationId } : "skip",
   );
 
   const sendMessage = useMutation(api.messages.sendMessage);
-  const createConversation = useMutation(api.conversations.getOrCreateConversation);
+  const createConversation = useMutation(
+    api.conversations.getOrCreateConversation,
+  );
 
   // Auto scroll to bottom on new message
   useEffect(() => {
@@ -43,7 +46,10 @@ export default function ChatPage() {
   // Ensure conversation exists on load
   useEffect(() => {
     if (currentClerkId && otherClerkId) {
-      createConversation({ currentUserId: currentClerkId, otherUserId: otherClerkId });
+      createConversation({
+        currentUserId: currentClerkId,
+        otherUserId: otherClerkId,
+      });
     }
   }, [currentClerkId, otherClerkId]);
 
@@ -90,7 +96,9 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
         {messages === undefined ? (
-          <p className="text-sm text-muted-foreground text-center">Loading messages...</p>
+          <p className="text-sm text-muted-foreground text-center">
+            Loading messages...
+          </p>
         ) : messages.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center mt-8">
             No messages yet. Say hi to {otherUser.name}! 👋
@@ -116,10 +124,7 @@ export default function ChatPage() {
                       isMe ? "text-background/60" : "text-muted-foreground"
                     }`}
                   >
-                    {new Date(msg.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatMessageTime(msg.createdAt)}
                   </p>
                 </div>
               </div>
