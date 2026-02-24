@@ -73,6 +73,15 @@ export default function ChatPage() {
     }
   };
 
+  // Add this inside your ChatPage component
+  const allPresence = useQuery(api.presence.getAllPresence) ?? [];
+
+  const isOnline = (clerkId: string) => {
+    const record = allPresence.find((p) => p.clerkId === clerkId);
+    if (!record) return false;
+    return record.isOnline && Date.now() - record.lastSeen < 20000;
+  };
+
   if (!otherUser) {
     return (
       <div className="flex flex-1 items-center justify-center h-full">
@@ -96,13 +105,21 @@ export default function ChatPage() {
           <ArrowLeftCircle color="#B8B8B8" size={30} />
         </button>
         <div className="flex flex-row gap-3">
-          <img
-            src={otherUser.imageUrl}
-            alt={otherUser.name}
-            className="w-9 h-9 rounded-full object-cover"
-          />
+          <div className="relative">
+            <img
+              src={otherUser.imageUrl}
+              alt={otherUser.name}
+              className="w-9 h-9 rounded-full object-cover"
+            />
+            {isOnline(otherClerkId) && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full" />
+            )}
+          </div>
           <div>
-            <p className="font-semibold text-sm">{otherUser.name}</p>
+            <div className="flex flow-row gap-2">
+              <p className="font-semibold text-sm items-end justify-end">{otherUser.name}</p>
+              {isOnline(otherClerkId) && <span className="text-[12px] mt-0.5 text-gray-500 font-semibold">( Online )</span>}
+            </div>
             <p className="text-xs text-muted-foreground">{otherUser.email}</p>
           </div>
         </div>

@@ -19,4 +19,10 @@ export default defineSchema({
     content: v.string(),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
+
+  presence: defineTable({
+  clerkId: v.string(),
+  lastSeen: v.number(),
+  isOnline: v.boolean(),
+}).index("by_clerkId", ["clerkId"]),
 });

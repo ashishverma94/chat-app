@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useGlobalStore } from "@/store/globalStore";
+import { usePresence } from "@/hooks/usePresence";
 
 export default function ChatLayout({
   children,
@@ -37,7 +38,10 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
   const [search, setSearch] = useState("");
   const router = useRouter();
   const { user } = useUser();
-  const { sidebarOpen, setSidebarOpen } = useGlobalStore();
+  const { setSidebarOpen } = useGlobalStore();
+  const pathname = usePathname();
+
+   
 
   const allUsers = useQuery(api.users.getAllUsers, {
     currentClerkId,
@@ -46,7 +50,14 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
   const filtered = (allUsers ?? []).filter((u) =>
     u.name.toLowerCase().includes(search.toLowerCase()),
   );
-  const pathname = usePathname();
+
+  usePresence(currentClerkId);
+  const allPresence = useQuery(api.presence.getAllPresence) ?? [];
+ const isOnline = (clerkId: string) => {
+    const record = allPresence.find((p) => p.clerkId === clerkId);
+    if (!record) return false;
+    return record.isOnline && Date.now() - record.lastSeen < 20000;
+  };
 
   return (
     <aside className="w-full md:w-60 lg:w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
@@ -85,6 +96,7 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
                 name={u.name}
                 imageUrl={u.imageUrl}
                 active={pathname === `/chat/${u.clerkId}`}
+                 online={isOnline(u.clerkId)}
                 onClick={() => {
                   router.push(`/chat/${u.clerkId}`);
                   setSidebarOpen(false); // hide sidebar
@@ -120,16 +132,16 @@ function UserRow({
   imageUrl,
   onClick,
   active,
+  online,
   preview,
 }: {
   name: string;
   imageUrl: string;
   onClick: () => void;
   active?: boolean;
+  online?: boolean;
   preview?: string;
 }) {
-  const { sidebarOpen, setSidebarOpen } = useGlobalStore();
-
   return (
     <button
       onClick={onClick}
@@ -139,17 +151,24 @@ function UserRow({
           : "hover:bg-slate-100 dark:hover:bg-slate-800"
       }`}
     >
-      <img
-        src={imageUrl}
-        alt={name}
-        className="w-9 h-9 rounded-full object-cover shrink-0"
-      />
+      <div className="relative shrink-0">
+        <img
+          src={imageUrl}
+          alt={name}
+          className="w-9 h-9 rounded-full object-cover"
+        />
+        {online && (
+          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full" />
+        )}
+      </div>
+
       <div className="flex flex-col min-w-0">
         <span className="text-sm font-medium truncate">{name}</span>
+        <span className="text-xs text-muted-foreground truncate">
+          {online ? "Online" : "Offline"}
+        </span>
         {preview && (
-          <span className="text-xs text-muted-foreground truncate">
-            {preview}
-          </span>
+          <span className="text-xs text-muted-foreground truncate">{preview}</span>
         )}
       </div>
     </button>
