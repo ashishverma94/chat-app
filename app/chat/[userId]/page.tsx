@@ -17,6 +17,13 @@ export default function ChatPage() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // FOR SCROLLING PURPOSES
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [unreadScrollCount, setUnreadScrollCount] = useState(0);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const prevMessageCount = useRef(0);
+
   const router = useRouter();
   const currentClerkId = user?.id ?? "";
 
@@ -41,11 +48,6 @@ export default function ChatPage() {
   const createConversation = useMutation(
     api.conversations.getOrCreateConversation,
   );
-
-  // Auto scroll to bottom on new message
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // Ensure conversation exists on load
   useEffect(() => {
@@ -91,18 +93,51 @@ export default function ChatPage() {
   };
 
   const setTypingMutation = useMutation(api.typing.setTyping);
-
+  const deleteMessage = useMutation(api.messages.deleteMessage);
   const typingUsers = useQuery(
     api.typing.getTypingUsers,
     conversationId ? { conversationId, currentUserId: currentClerkId } : "skip",
   );
 
   const markAsRead = useMutation(api.readStatus.markAsRead);
-useEffect(() => {
-  if (conversationId && currentClerkId) {
-    markAsRead({ clerkId: currentClerkId, conversationId });
-  }
-}, [conversationId, messages]);
+  useEffect(() => {
+    if (conversationId && currentClerkId) {
+      markAsRead({ clerkId: currentClerkId, conversationId });
+    }
+  }, [conversationId, messages]);
+
+  // Detect if user has scrolled up
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    setIsScrolledUp(distanceFromBottom > 100);
+  };
+
+  // Smart scroll logic when new messages arrive
+  useEffect(() => {
+    if (!messages) return;
+    const newCount = messages.length;
+    const added = newCount - prevMessageCount.current;
+    prevMessageCount.current = newCount;
+
+    if (added <= 0) return;
+
+    if (isScrolledUp) {
+      // User is reading old messages — show button instead
+      setUnreadScrollCount((prev) => prev + added);
+    } else {
+      // User is at bottom — auto scroll
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setUnreadScrollCount(0);
+    setIsScrolledUp(false);
+  };
 
   if (!otherUser) {
     return (
@@ -154,7 +189,11 @@ useEffect(() => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
+      >
         {messages === undefined ? (
           <p className="text-sm text-muted-foreground text-center">
             Loading messages...
@@ -169,8 +208,36 @@ useEffect(() => {
             return (
               <div
                 key={msg._id}
-                className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                className={`flex group ${isMe ? "justify-end" : "justify-start"}`}
               >
+                {isMe && !msg.isDeleted && (
+                  <button
+                    onClick={() =>
+                      deleteMessage({
+                        messageId: msg._id,
+                        clerkId: currentClerkId,
+                      })
+                    }
+                    className="self-center cursor-pointer mr-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
+                    title="Delete message"
+                  >
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                      <path d="M9 6V4h6v2" />
+                    </svg>
+                  </button>
+                )}
                 <div
                   className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm ${
                     isMe
@@ -178,13 +245,18 @@ useEffect(() => {
                       : "bg-slate-100 dark:bg-slate-800 text-foreground rounded-bl-sm"
                   }`}
                 >
-                  <p>{msg.content}</p>
+                  {msg.isDeleted ? (
+                    <p className="italic text-sm">This message was deleted</p>
+                  ) : (
+                    <p>{msg.content}</p>
+                  )}
                   <p
                     className={`text-xs mt-1 ${
                       isMe ? "text-background/60" : "text-muted-foreground"
                     }`}
                   >
                     {formatMessageTime(msg.createdAt)}
+                    {msg.isDeleted && " · deleted"}
                   </p>
                 </div>
               </div>
@@ -210,6 +282,18 @@ useEffect(() => {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {isScrolledUp && unreadScrollCount > 0 && (
+        <div className="flex justify-center pb-2">
+          <button
+            onClick={scrollToBottom}
+            className="flex items-center border-white border-2 gap-2 bg-foreground text-background text-xs font-medium px-4 py-2 rounded-full shadow-lg hover:opacity-90 transition-opacity animate-bounce"
+          >
+            ↓ {unreadScrollCount} New{" "}
+            {unreadScrollCount === 1 ? "message" : "messages"}
+          </button>
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-4 border-t-2 border-slate-200 dark:border-slate-800 flex gap-3">

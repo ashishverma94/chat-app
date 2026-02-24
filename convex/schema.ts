@@ -18,6 +18,7 @@ export default defineSchema({
     senderId: v.string(), // clerkId
     content: v.string(),
     createdAt: v.number(),
+    isDeleted: v.optional(v.boolean()),
   }).index("by_conversation", ["conversationId"]),
 
   presence: defineTable({
