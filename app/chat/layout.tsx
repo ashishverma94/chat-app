@@ -8,6 +8,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useGlobalStore } from "@/store/globalStore";
 import { usePresence } from "@/hooks/usePresence";
+import { UnreadBadge } from "@/components/UnreadBadge";
 
 export default function ChatLayout({
   children,
@@ -41,8 +42,6 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
   const { setSidebarOpen } = useGlobalStore();
   const pathname = usePathname();
 
-   
-
   const allUsers = useQuery(api.users.getAllUsers, {
     currentClerkId,
   });
@@ -53,11 +52,15 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
 
   usePresence(currentClerkId);
   const allPresence = useQuery(api.presence.getAllPresence) ?? [];
- const isOnline = (clerkId: string) => {
+  const isOnline = (clerkId: string) => {
     const record = allPresence.find((p) => p.clerkId === clerkId);
     if (!record) return false;
     return record.isOnline && Date.now() - record.lastSeen < 20000;
   };
+
+  const conversations = useQuery(api.conversations.getUserConversations, {
+    currentUserId: currentClerkId,
+  });
 
   return (
     <aside className="w-full md:w-60 lg:w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
@@ -90,19 +93,35 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
           ) : filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground px-1">No users found</p>
           ) : (
-            filtered.map((u) => (
-              <UserRow
-                key={u._id}
-                name={u.name}
-                imageUrl={u.imageUrl}
-                active={pathname === `/chat/${u.clerkId}`}
-                 online={isOnline(u.clerkId)}
-                onClick={() => {
-                  router.push(`/chat/${u.clerkId}`);
-                  setSidebarOpen(false); // hide sidebar
-                }}
-              />
-            ))
+            filtered.map((u) => {
+              const conversation = (conversations ?? []).find(
+                (c) =>
+                  c.participantIds.includes(u.clerkId) &&
+                  c.participantIds.includes(currentClerkId),
+              );
+              return (
+                <div key={u._id} className="flex items-center relative">
+                  <UserRow
+                    name={u.name}
+                    imageUrl={u.imageUrl}
+                    active={pathname === `/chat/${u.clerkId}`}
+                    online={isOnline(u.clerkId)}
+                    onClick={() => {
+                      router.push(`/chat/${u.clerkId}`);
+                      setSidebarOpen(false);
+                    }}
+                  />
+                  {conversation && (
+                    <div className="pr-2 absolute right-1">
+                      <UnreadBadge
+                        clerkId={currentClerkId}
+                        conversationId={conversation._id}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </div>
@@ -168,7 +187,9 @@ function UserRow({
           {online ? "Online" : "Offline"}
         </span>
         {preview && (
-          <span className="text-xs text-muted-foreground truncate">{preview}</span>
+          <span className="text-xs text-muted-foreground truncate">
+            {preview}
+          </span>
         )}
       </div>
     </button>

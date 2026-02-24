@@ -14,6 +14,7 @@ export default function ChatPage() {
   const { user } = useUser();
   const [input, setInput] = useState("");
   const { sidebarOpen, setSidebarOpen } = useGlobalStore();
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -59,6 +60,13 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!input.trim() || !conversationId) return;
     setInput("");
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setTypingMutation({
+      conversationId,
+      userId: currentClerkId,
+      userName: user?.firstName ?? "Someone",
+      isTyping: false,
+    });
     await sendMessage({
       conversationId,
       senderId: currentClerkId,
@@ -81,6 +89,20 @@ export default function ChatPage() {
     if (!record) return false;
     return record.isOnline && Date.now() - record.lastSeen < 20000;
   };
+
+  const setTypingMutation = useMutation(api.typing.setTyping);
+
+  const typingUsers = useQuery(
+    api.typing.getTypingUsers,
+    conversationId ? { conversationId, currentUserId: currentClerkId } : "skip",
+  );
+
+  const markAsRead = useMutation(api.readStatus.markAsRead);
+useEffect(() => {
+  if (conversationId && currentClerkId) {
+    markAsRead({ clerkId: currentClerkId, conversationId });
+  }
+}, [conversationId, messages]);
 
   if (!otherUser) {
     return (
@@ -117,8 +139,14 @@ export default function ChatPage() {
           </div>
           <div>
             <div className="flex flow-row gap-2">
-              <p className="font-semibold text-sm items-end justify-end">{otherUser.name}</p>
-              {isOnline(otherClerkId) && <span className="text-[12px] mt-0.5 text-gray-500 font-semibold">( Online )</span>}
+              <p className="font-semibold text-sm items-end justify-end">
+                {otherUser.name}
+              </p>
+              {isOnline(otherClerkId) && (
+                <span className="text-[12px] mt-0.5 text-gray-500 font-semibold">
+                  ( Online )
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">{otherUser.email}</p>
           </div>
@@ -163,6 +191,23 @@ export default function ChatPage() {
             );
           })
         )}
+        {typingUsers && typingUsers.length > 0 && (
+          <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+            {/* <span>
+              {typingUsers.map((u) => u.userName).join(", ")}{" "}
+              {typingUsers.length === 1 ? "is" : "are"} typing
+            </span> */}
+            <span className="flex gap-0.5 mt-5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="w-2.5 h-2.5 rounded-full bg-muted-foreground animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </span>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -171,7 +216,26 @@ export default function ChatPage() {
         <input
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            if (!conversationId) return;
+            setTypingMutation({
+              conversationId,
+              userId: currentClerkId,
+              userName: user?.firstName ?? "Someone",
+              isTyping: true,
+            });
+            if (typingTimeoutRef.current)
+              clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+              setTypingMutation({
+                conversationId,
+                userId: currentClerkId,
+                userName: user?.firstName ?? "Someone",
+                isTyping: false,
+              });
+            }, 2000);
+          }}
           onKeyDown={handleKeyDown}
           placeholder={`Message ${otherUser.name}...`}
           className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-200 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
