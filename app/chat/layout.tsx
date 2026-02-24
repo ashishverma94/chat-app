@@ -6,14 +6,29 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
+import { useGlobalStore } from "@/store/globalStore";
 
-export default function ChatLayout({ children }: { children: React.ReactNode }) {
+export default function ChatLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { user } = useUser();
+  const { sidebarOpen } = useGlobalStore();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      <Sidebar currentClerkId={user?.id ?? ""} />
-      <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+      <div
+        className={`${sidebarOpen ? "block" : "hidden"} md:block max-md:w-full`}
+      >
+        <Sidebar currentClerkId={user?.id ?? ""} />
+      </div>
+
+      <main
+        className={`${sidebarOpen ? "hidden" : "flex"} flex-1 h-screen md:flex flex-col overflow-hidden`}
+      >
+        {children}
+      </main>
     </div>
   );
 }
@@ -22,25 +37,21 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
   const [search, setSearch] = useState("");
   const router = useRouter();
   const { user } = useUser();
+  const { sidebarOpen, setSidebarOpen } = useGlobalStore();
 
   const allUsers = useQuery(api.users.getAllUsers, {
     currentClerkId,
   });
 
-  const conversations = useQuery(api.conversations.getUserConversations, {
-    currentUserId: currentClerkId,
-  });
-
   const filtered = (allUsers ?? []).filter((u) =>
-    u.name.toLowerCase().includes(search.toLowerCase())
+    u.name.toLowerCase().includes(search.toLowerCase()),
   );
   const pathname = usePathname();
 
-
   return (
-    <aside className="w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
+    <aside className="w-full md:w-60 lg:w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b-2 border-slate-200 dark:border-slate-800 flex items-center justify-between">
+      <div className="p-4 h-16 border-b-2 border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <span className="font-bold text-lg">Messages</span>
         <UserButton afterSignOutUrl="/login" />
       </div>
@@ -69,20 +80,23 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
             <p className="text-xs text-muted-foreground px-1">No users found</p>
           ) : (
             filtered.map((u) => (
-             <UserRow
-  key={u._id}
-  name={u.name}
-  imageUrl={u.imageUrl}
-  active={pathname === `/chat/${u.clerkId}`}
-  onClick={() => router.push(`/chat/${u.clerkId}`)}
-/>
+              <UserRow
+                key={u._id}
+                name={u.name}
+                imageUrl={u.imageUrl}
+                active={pathname === `/chat/${u.clerkId}`}
+                onClick={() => {
+                  router.push(`/chat/${u.clerkId}`);
+                  setSidebarOpen(false); // hide sidebar
+                }}
+              />
             ))
           )}
         </div>
       </div>
 
       {/* Current user info */}
-      <div className="p-4 border-t-2 border-slate-200 dark:border-slate-800 flex items-center gap-3">
+      <div className="p-4 border-t-2 border-slate-200 dark:border-slate-800 hidden md:flex items-center gap-3">
         {user?.imageUrl && (
           <img
             src={user.imageUrl}
@@ -114,6 +128,8 @@ function UserRow({
   active?: boolean;
   preview?: string;
 }) {
+  const { sidebarOpen, setSidebarOpen } = useGlobalStore();
+
   return (
     <button
       onClick={onClick}
@@ -126,12 +142,14 @@ function UserRow({
       <img
         src={imageUrl}
         alt={name}
-        className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+        className="w-9 h-9 rounded-full object-cover shrink-0"
       />
       <div className="flex flex-col min-w-0">
         <span className="text-sm font-medium truncate">{name}</span>
         {preview && (
-          <span className="text-xs text-muted-foreground truncate">{preview}</span>
+          <span className="text-xs text-muted-foreground truncate">
+            {preview}
+          </span>
         )}
       </div>
     </button>

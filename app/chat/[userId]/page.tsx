@@ -3,17 +3,20 @@
 import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Id } from "@/convex/_generated/dataModel";
 import { formatMessageTime } from "@/utils/formatTime";
+import { ArrowLeftCircle } from "lucide-react";
+import { useGlobalStore } from "@/store/globalStore";
 
 export default function ChatPage() {
   const { userId: otherClerkId } = useParams<{ userId: string }>();
   const { user } = useUser();
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const { sidebarOpen, setSidebarOpen } = useGlobalStore();
 
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const currentClerkId = user?.id ?? "";
 
   // Get other user's profile
@@ -81,15 +84,27 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="p-4 border-b-2 border-slate-200 dark:border-slate-800 flex items-center gap-3">
-        <img
-          src={otherUser.imageUrl}
-          alt={otherUser.name}
-          className="w-9 h-9 rounded-full object-cover"
-        />
-        <div>
-          <p className="font-semibold text-sm">{otherUser.name}</p>
-          <p className="text-xs text-muted-foreground">{otherUser.email}</p>
+
+      <div className="p-4  h-16 border-b-2 border-slate-200 dark:border-slate-800 flex items-center gap-1">
+        <button
+          onClick={() => {
+            router.push("/chat");
+            setSidebarOpen(true);
+          }}
+          className="mr-3 text-lg md:hidden"
+        >
+          <ArrowLeftCircle color="#B8B8B8" size={30} />
+        </button>
+        <div className="flex flex-row gap-3">
+          <img
+            src={otherUser.imageUrl}
+            alt={otherUser.name}
+            className="w-9 h-9 rounded-full object-cover"
+          />
+          <div>
+            <p className="font-semibold text-sm">{otherUser.name}</p>
+            <p className="text-xs text-muted-foreground">{otherUser.email}</p>
+          </div>
         </div>
       </div>
 
