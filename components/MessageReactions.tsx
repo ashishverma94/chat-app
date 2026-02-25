@@ -59,7 +59,7 @@ export function EmojiPicker({
   if (!visible) return null;
 
   return (
-    <div className="absolute bottom-8 left-0 z-50 flex gap-1 bg-background border border-slate-200 dark:border-slate-700 rounded-full px-2 py-1.5 shadow-lg">
+    <div className="absolute bottom-6 right-0 z-50 flex gap-1 bg-background border border-slate-200 dark:border-slate-700 rounded-full px-5 py-3.5 shadow-lg">
       {EMOJIS.map((emoji) => (
         <button
           key={emoji}
@@ -67,7 +67,7 @@ export function EmojiPicker({
             e.stopPropagation();
             onSelect(emoji);
           }}
-          className="text-lg hover:scale-125 transition-transform"
+          className="text-2xl cursor-pointer hover:scale-125 transition-transform"
         >
           {emoji}
         </button>

@@ -4,6 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -46,6 +47,8 @@
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
 }
+
+
 
 :root {
   --radius: 0.625rem;
@@ -123,4 +126,9 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@theme{
+  --color-bprimary:#57F527;
+  --color-bsecondary:#B9F7A6
 }

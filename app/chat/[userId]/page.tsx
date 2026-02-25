@@ -5,14 +5,27 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftCircle } from "lucide-react";
+import { ArrowLeftCircle, MessageSquareOff, SendHorizonal } from "lucide-react";
 import { useGlobalStore } from "@/store/globalStore";
 import { MessageBubble } from "@/components/MessageBubble";
+import Skeleton from "@/components/Skeleton";
+import MessageSkeleton from "@/components/MessageSkeleton";
+import ChatSkeleton from "@/components/ChatSkeleton";
+
+type MessageStatus = "sending" | "sent" | "failed";
+
+type PendingMessage = {
+  tempId: string;
+  content: string;
+  status: MessageStatus;
+};
 
 export default function ChatPage() {
   const { userId: otherClerkId } = useParams<{ userId: string }>();
   const { user } = useUser();
   const [input, setInput] = useState("");
+  const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
+
   const { sidebarOpen, setSidebarOpen } = useGlobalStore();
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -139,7 +152,6 @@ export default function ChatPage() {
   };
 
   const toggleReaction = useMutation(api.reactions.toggleReaction);
-  const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
 
   // Get all reactions for messages in this conversation
   const messageIds = (messages ?? []).map((m) => m._id);
@@ -153,11 +165,7 @@ export default function ChatPage() {
     useQuery(api.users.getAllUsers, { currentClerkId: "" }) ?? [];
 
   if (!otherUser) {
-    return (
-      <div className="flex flex-1 items-center justify-center h-full">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    );
+    return <ChatSkeleton />;
   }
 
   return (
@@ -208,13 +216,15 @@ export default function ChatPage() {
         className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
       >
         {messages === undefined ? (
-          <p className="text-sm text-muted-foreground text-center">
-            Loading messages...
-          </p>
+          <MessageSkeleton />
         ) : messages.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center mt-8">
-            No messages yet. Say hi to {otherUser.name}! 👋
-          </p>
+          <div className="text-base h-full flex-col pb-5 flex justify-center items-center gap-2 text-muted-foreground text-center mt-8">
+            <MessageSquareOff className="size-8" />
+            <span>
+              No messages yet. <br />
+              Say hi to <strong>{otherUser.name}</strong>! 👋
+            </span>
+          </div>
         ) : (
           messages.map((msg) => {
             return (
@@ -257,7 +267,10 @@ export default function ChatPage() {
             </span>
           </div>
         )}
-        <div ref={bottomRef} />
+        <div
+          ref={bottomRef}
+          className={`${messages && messages.length > 0 && "pb-25"} w-full`}
+        ></div>
       </div>
 
       {isScrolledUp && unreadScrollCount > 0 && (
@@ -273,7 +286,7 @@ export default function ChatPage() {
       )}
 
       {/* Input */}
-      <div className="p-4 border-t-2 border-slate-200 dark:border-slate-800 flex gap-3">
+      <div className="p-4 h-20 border-t-2 border-slate-200 dark:border-slate-800 flex gap-3">
         <input
           type="text"
           value={input}
@@ -299,14 +312,14 @@ export default function ChatPage() {
           }}
           onKeyDown={handleKeyDown}
           placeholder={`Message ${otherUser.name}...`}
-          className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-200 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
+          className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
         />
         <button
           onClick={handleSend}
           disabled={!input.trim()}
-          className="bg-foreground text-background px-4 py-2 rounded-md text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+          className={`${input ? "bg-slate-800" : "bg-foreground"} text-background px-3 py-2 rounded-full text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity`}
         >
-          Send
+          <SendHorizonal />
         </button>
       </div>
     </div>

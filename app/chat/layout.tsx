@@ -9,8 +9,9 @@ import { usePathname } from "next/navigation";
 import { useGlobalStore } from "@/store/globalStore";
 import { usePresence } from "@/hooks/usePresence";
 import { UnreadBadge } from "@/components/UnreadBadge";
-import { Users, Plus } from "lucide-react";
+import { Users, Plus, Search, MessageSquareMoreIcon } from "lucide-react";
 import { CreateGroupModal } from "@/components/createGroupModal";
+import Skeleton from "@/components/Skeleton";
 
 export default function ChatLayout({
   children,
@@ -102,19 +103,23 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
     <aside className="w-full md:w-60 lg:w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
       {/* Header */}
       <div className="p-4 h-16 border-b-2 border-slate-200 dark:border-slate-800 flex items-center justify-between">
-        <span className="font-bold text-lg">Messages</span>
+        <div className="flex flex-row items-center gap-2">
+          <MessageSquareMoreIcon />
+          <span className="font-bold text-lg">Messages</span>
+        </div>
         <UserButton afterSignOutUrl="/login" />
       </div>
 
       {/* Search */}
-      <div className="p-3 border-b border-slate-200 dark:border-slate-800">
+      <div className="p-4 relative border-b border-slate-200 dark:border-slate-800">
         <input
           type="text"
           placeholder="Search users..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-3 py-2 text-sm rounded-md border border-slate-200 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
+          className="w-full pl-9 pr-3 py-3 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-300"
         />
+        <Search className="absolute top-[50%] left-6 -translate-y-[50%] text-slate-400 size-5" />
       </div>
 
       {/* User list */}
@@ -140,14 +145,17 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
             (groupConversations ?? []).map((group) => (
               <button
                 key={group._id}
-                onClick={() => router.push(`/chat/group/${group._id}`)}
-                className={`w-full flex items-center gap-3 px-2 py-2.5 rounded-md transition-colors text-left ${
+                onClick={() => {
+                  router.push(`/chat/group/${group._id}`);
+                  setSidebarOpen(false);
+                }}
+                className={`w-full mt-1 flex items-center gap-3 px-2 py-2.5 rounded-md transition-colors text-left ${
                   pathname === `/chat/group/${group._id}`
                     ? "bg-slate-200 dark:bg-slate-700"
                     : "hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
-                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
                   <Users size={16} className="text-muted-foreground" />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
@@ -173,7 +181,11 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
             All Users
           </p>
           {filtered === undefined ? (
-            <p className="text-xs text-muted-foreground px-1">Loading...</p>
+            <div className=" flex flex-col gap-2 text-muted-foreground px-1">
+              {[1, 2, 3,4].map((item, index) => {
+                return <Skeleton height="58px" key={index} />;
+              })}
+            </div>
           ) : filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground px-1">No users found</p>
           ) : (
@@ -217,7 +229,7 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
       </div>
 
       {/* Current user info */}
-      <div className="p-4 border-t-2 border-slate-200 dark:border-slate-800 hidden md:flex items-center gap-3">
+      <div className="p-4 h-20 border-t-2 border-slate-200 dark:border-slate-800 hidden md:flex items-center gap-3">
         {user?.imageUrl && (
           <img
             src={user.imageUrl}
@@ -257,7 +269,7 @@ function UserRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-2 py-2.5 rounded-md transition-colors text-left ${
+      className={`w-full mt-1 flex items-center gap-3 px-2 py-2.5 rounded-md transition-colors text-left ${
         active
           ? "bg-slate-200 dark:bg-slate-700"
           : "hover:bg-slate-100 dark:hover:bg-slate-800"

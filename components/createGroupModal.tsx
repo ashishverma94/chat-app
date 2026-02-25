@@ -103,7 +103,7 @@ export function CreateGroupModal({ onClose }: { onClose: () => void }) {
                     <img
                       src={u.imageUrl}
                       alt={u.name}
-                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                      className="w-8 h-8 rounded-full object-cover shrink-0"
                     />
                     <div className="flex flex-col min-w-0">
                       <span className="text-sm font-medium truncate">{u.name}</span>

@@ -27,32 +27,104 @@ interface MessageBubbleProps {
   isMe: boolean;
   isGroup: boolean;
   currentClerkId: string;
-  allUsers: User[]; // ✅ passed in — no need for getSenderName/Image functions
+  allUsers: User[];
   reactionsMap: Record<string, Reaction[]>;
   onDelete: (messageId: Id<"messages">) => void;
   onReact: (messageId: Id<"messages">, emoji: string) => void;
 }
 
-// ─── Long Press Hook (inside same file, used only here) ──
+// ─── Long Press Hook ──────────────────────────────────────
 function useLongPress(callback: () => void, ms = 500) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const start = () => {
     timerRef.current = setTimeout(callback, ms);
   };
-
   const stop = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   };
-
-  return {
-    onTouchStart: start,
-    onTouchEnd: stop,
-    onTouchMove: stop,
-  };
+  return { onTouchStart: start, onTouchEnd: stop, onTouchMove: stop };
 }
 
-// ─── Main Component ───────────────────────────────────────
+const EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
+
+// ─── Delete Button ────────────────────────────────────────
+function DeleteButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 hidden md:flex items-center self-center cursor-pointer"
+      title="Delete message"
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 11v6M14 11v6" />
+        <path d="M9 6V4h6v2" />
+      </svg>
+    </button>
+  );
+}
+
+function ReactButton({
+  pickerOpen,
+  onToggle,
+  onSelect,
+  isMe,
+}: {
+  pickerOpen: boolean;
+  onToggle: () => void;
+  onSelect: (emoji: string) => void;
+  isMe: boolean;
+}) {
+  return (
+    <div className="relative opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex items-center self-center">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className="text-muted-foreground hover:text-foreground cursor-pointer text-xl leading-none"
+        title="React"
+      >
+        😊
+      </button>
+      {/* ✅ Picker aligns based on message side */}
+      {pickerOpen && (
+        <div
+          className={`absolute bottom-8 z-50 flex gap-1 bg-background border border-slate-200 dark:border-slate-700 rounded-full px-2 py-1.5 shadow-lg whitespace-nowrap ${
+            isMe
+              ? "right-0" // ✅ my messages → expands leftward, never clips right
+              : "left-0" // ✅ others → expands rightward, away from sidebar
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => onSelect(emoji)}
+              className="text-lg hover:scale-125 transition-transform"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MessageBubble({
   msg,
   isMe,
@@ -65,12 +137,10 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [menuAbove, setMenuAbove] = useState(true); // ✅ flip direction
+  const [menuAbove, setMenuAbove] = useState(true);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
   const msgReactions = reactionsMap[msg._id] ?? [];
-
-  // Resolve sender info from allUsers list
   const sender = allUsers.find((u) => u.clerkId === msg.senderId);
   const senderName = sender?.name ?? "Unknown";
   const senderImage = sender?.imageUrl ?? "";
@@ -79,64 +149,31 @@ export function MessageBubble({
     if (!msg.isDeleted) {
       if (bubbleRef.current) {
         const rect = bubbleRef.current.getBoundingClientRect();
-        // If less than 180px space above → show menu below bubble instead
         setMenuAbove(rect.top > 180);
       }
       setShowMenu(true);
     }
   });
 
-  const handleOutsideClick = () => {
-    setShowMenu(false);
-    setPickerOpen(false);
-  };
-
-  const EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
-
   return (
     <div
-      className={`flex group ${isMe ? "justify-end" : "justify-start"}`}
-      onClick={handleOutsideClick}
+      className={`flex items-end group ${isMe ? "justify-end" : "justify-start"}`}
+      onClick={() => {
+        setShowMenu(false);
+        setPickerOpen(false);
+      }}
     >
-      {/* ── Desktop delete button (own messages only) ── */}
-      {isMe && !msg.isDeleted && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(msg._id);
-          }}
-          className="self-center mr-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 hidden md:block"
-          title="Delete message"
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14H6L5 6" />
-            <path d="M10 11v6M14 11v6" />
-            <path d="M9 6V4h6v2" />
-          </svg>
-        </button>
-      )}
-
-      {/* ── Group: sender avatar (others only) ── */}
+      {/* ── Group sender avatar (left side, others only) ── */}
       {isGroup && !isMe && (
         <img
           src={senderImage}
           alt={senderName}
-          className="w-7 h-7 rounded-full object-cover self-end mr-2 shrink-0"
+          className="w-7 h-7 rounded-full object-cover self-end mr-2 shrink-0 mb-5"
         />
       )}
 
       {/* ── Message column ── */}
-      <div className="flex flex-col max-w-xs lg:max-w-md relative">
+      <div className="flex flex-col max-w-72 md:max-w-md lg:max-w-lg relative">
         {/* Group sender name */}
         {isGroup && !isMe && (
           <span className="text-xs text-muted-foreground mb-1 ml-1">
@@ -145,9 +182,7 @@ export function MessageBubble({
         )}
 
         <div
-          className={`flex items-end gap-1 ${
-            isMe ? "flex-row-reverse" : "flex-row"
-          }`}
+          className={`flex items-end gap-1.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
         >
           {/* ── Bubble ── */}
           <div
@@ -160,40 +195,36 @@ export function MessageBubble({
             }`}
           >
             {msg.isDeleted ? (
-              <p className="italic text-sm">This message was deleted</p>
+              <p className="italic text-base">This message was deleted</p>
             ) : (
-              <p>{msg.content}</p>
+              <p className="text-base">{msg.content}</p>
             )}
             <p
-              className={`text-xs mt-1 ${
-                isMe ? "text-background/60" : "text-muted-foreground"
-              }`}
+              className={`text-xs mt-1 ${isMe ? "text-background/60" : "text-muted-foreground"}`}
             >
               {formatMessageTime(msg.createdAt)}
               {msg.isDeleted && " · deleted"}
             </p>
           </div>
 
-          {/* ── Desktop emoji react button ── */}
+          {/* ── Action buttons — sit next to bubble ── */}
           {!msg.isDeleted && (
-            <div className="relative opacity-0 group-hover:opacity-100 transition-opacity mb-1 hidden md:block">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPickerOpen((prev) => !prev);
-                }}
-                className="text-muted-foreground hover:text-foreground text-base leading-none"
-                title="React"
-              >
-                😊
-              </button>
-              <EmojiPicker
-                visible={pickerOpen}
+            <div
+              className={`flex items-center gap-1 mb-5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+            >
+              {/* Emoji react button */}
+              <ReactButton
+                pickerOpen={pickerOpen}
+                onToggle={() => setPickerOpen((p) => !p)}
                 onSelect={(emoji) => {
                   onReact(msg._id, emoji);
                   setPickerOpen(false);
                 }}
+                isMe={isMe}
               />
+
+              {/* Delete button — only for own messages */}
+              {isMe && <DeleteButton onClick={() => onDelete(msg._id)} />}
             </div>
           )}
         </div>
@@ -212,10 +243,9 @@ export function MessageBubble({
         {/* ── Mobile action menu (long press) ── */}
         {showMenu && !msg.isDeleted && (
           <div
-            className={`absolute h-35 z-50 bottom-full mb-2 flex flex-col gap-1 bg-background border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 min-w-45 ${
+            className={`absolute z-50 flex flex-col gap-1 bg-background border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 min-w-45 ${
               isMe ? "right-0" : "left-0"
-            } 
-             ${menuAbove ? "bottom-full mb-2" : "top-full mt-2"}`}
+            } ${menuAbove ? "bottom-full mb-2" : "top-full mt-2"}`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Emoji row */}
