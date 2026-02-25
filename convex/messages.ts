@@ -61,3 +61,29 @@ export const deleteMessage = mutation({
     await ctx.db.patch(args.messageId, { isDeleted: true });
   },
 });
+
+export const getLastMessages = query({
+  args: { conversationIds: v.array(v.id("conversations")) },
+  handler: async (ctx, args) => {
+    const results = await Promise.all(
+      args.conversationIds.map((id) =>
+        ctx.db
+          .query("messages")
+          .withIndex("by_conversation", (q) => q.eq("conversationId", id))
+          .order("desc")
+          .first()
+      )
+    );
+    const map: Record<string, { content: string; senderId: string; isDeleted?: boolean }> = {};
+    args.conversationIds.forEach((id, i) => {
+      if (results[i]) {
+        map[id] = {
+          content: results[i]!.content,
+          senderId: results[i]!.senderId,
+          isDeleted: results[i]!.isDeleted,
+        };
+      }
+    });
+    return map;
+  },
+});

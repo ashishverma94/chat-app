@@ -11,6 +11,7 @@
 import type * as conversations from "../conversations.js";
 import type * as messages from "../messages.js";
 import type * as presence from "../presence.js";
+import type * as reactions from "../reactions.js";
 import type * as readStatus from "../readStatus.js";
 import type * as typing from "../typing.js";
 import type * as unread from "../unread.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   messages: typeof messages;
   presence: typeof presence;
+  reactions: typeof reactions;
   readStatus: typeof readStatus;
   typing: typeof typing;
   unread: typeof unread;

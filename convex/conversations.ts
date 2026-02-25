@@ -46,3 +46,32 @@ export const getConversationId = query({
     return found?._id ?? null;
   },
 });
+
+export const createGroupConversation = mutation({
+  args: {
+    participantIds: v.array(v.string()),
+    groupName: v.string(),
+    createdBy: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.participantIds.length < 2) {
+      throw new Error("Group needs at least 2 other members");
+    }
+    return await ctx.db.insert("conversations", {
+      participantIds: [...args.participantIds, args.createdBy],
+      isGroup: true,
+      groupName: args.groupName,
+      createdBy: args.createdBy,
+    });
+  },
+});
+
+export const getGroupConversations = query({
+  args: { currentUserId: v.string() },
+  handler: async (ctx, args) => {
+    const all = await ctx.db.query("conversations").collect();
+    return all.filter(
+      (c) => c.isGroup && c.participantIds.includes(args.currentUserId)
+    );
+  },
+});

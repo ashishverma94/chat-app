@@ -5,9 +5,9 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { formatMessageTime } from "@/utils/formatTime";
 import { ArrowLeftCircle } from "lucide-react";
 import { useGlobalStore } from "@/store/globalStore";
+import { MessageBubble } from "@/components/MessageBubble";
 
 export default function ChatPage() {
   const { userId: otherClerkId } = useParams<{ userId: string }>();
@@ -15,7 +15,6 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const { sidebarOpen, setSidebarOpen } = useGlobalStore();
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // FOR SCROLLING PURPOSES
@@ -139,6 +138,20 @@ export default function ChatPage() {
     setIsScrolledUp(false);
   };
 
+  const toggleReaction = useMutation(api.reactions.toggleReaction);
+  const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
+
+  // Get all reactions for messages in this conversation
+  const messageIds = (messages ?? []).map((m) => m._id);
+  const reactionsMap =
+    useQuery(
+      api.reactions.getReactionsForConversation,
+      messageIds.length > 0 ? { messageIds } : "skip",
+    ) ?? {};
+
+  const allUsers =
+    useQuery(api.users.getAllUsers, { currentClerkId: "" }) ?? [];
+
   if (!otherUser) {
     return (
       <div className="flex flex-1 items-center justify-center h-full">
@@ -204,62 +217,26 @@ export default function ChatPage() {
           </p>
         ) : (
           messages.map((msg) => {
-            const isMe = msg.senderId === currentClerkId;
             return (
-              <div
+              <MessageBubble
                 key={msg._id}
-                className={`flex group ${isMe ? "justify-end" : "justify-start"}`}
-              >
-                {isMe && !msg.isDeleted && (
-                  <button
-                    onClick={() =>
-                      deleteMessage({
-                        messageId: msg._id,
-                        clerkId: currentClerkId,
-                      })
-                    }
-                    className="self-center cursor-pointer mr-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
-                    title="Delete message"
-                  >
-                    <svg
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14H6L5 6" />
-                      <path d="M10 11v6M14 11v6" />
-                      <path d="M9 6V4h6v2" />
-                    </svg>
-                  </button>
-                )}
-                <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm ${
-                    isMe
-                      ? "bg-foreground text-background rounded-br-sm"
-                      : "bg-slate-100 dark:bg-slate-800 text-foreground rounded-bl-sm"
-                  }`}
-                >
-                  {msg.isDeleted ? (
-                    <p className="italic text-sm">This message was deleted</p>
-                  ) : (
-                    <p>{msg.content}</p>
-                  )}
-                  <p
-                    className={`text-xs mt-1 ${
-                      isMe ? "text-background/60" : "text-muted-foreground"
-                    }`}
-                  >
-                    {formatMessageTime(msg.createdAt)}
-                    {msg.isDeleted && " · deleted"}
-                  </p>
-                </div>
-              </div>
+                msg={msg}
+                isMe={msg.senderId === currentClerkId}
+                isGroup={false}
+                currentClerkId={currentClerkId}
+                allUsers={allUsers}
+                reactionsMap={reactionsMap}
+                onDelete={(id) =>
+                  deleteMessage({ messageId: id, clerkId: currentClerkId })
+                }
+                onReact={(id, emoji) =>
+                  toggleReaction({
+                    messageId: id,
+                    clerkId: currentClerkId,
+                    emoji,
+                  })
+                }
+              />
             );
           })
         )}

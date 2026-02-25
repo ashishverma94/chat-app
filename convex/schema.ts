@@ -11,6 +11,10 @@ export default defineSchema({
 
   conversations: defineTable({
     participantIds: v.array(v.string()), // clerkIds
+    isGroup: v.optional(v.boolean()),
+  groupName: v.optional(v.string()),
+  groupImage: v.optional(v.string()),
+  createdBy: v.optional(v.string()),
   }),
 
   messages: defineTable({
@@ -56,4 +60,12 @@ export default defineSchema({
   })
     .index("by_clerkId", ["clerkId"])
     .index("by_clerkId_and_conversation", ["clerkId", "conversationId"]),
+
+  reactions: defineTable({
+    messageId: v.id("messages"),
+    clerkId: v.string(),
+    emoji: v.string(),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_message_and_user", ["messageId", "clerkId"]),
 });

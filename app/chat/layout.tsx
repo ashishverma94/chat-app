@@ -9,6 +9,8 @@ import { usePathname } from "next/navigation";
 import { useGlobalStore } from "@/store/globalStore";
 import { usePresence } from "@/hooks/usePresence";
 import { UnreadBadge } from "@/components/UnreadBadge";
+import { Users, Plus } from "lucide-react";
+import { CreateGroupModal } from "@/components/createGroupModal";
 
 export default function ChatLayout({
   children,
@@ -62,6 +64,40 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
     currentUserId: currentClerkId,
   });
 
+  // FOR GROUPS
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const groupConversations = useQuery(api.conversations.getGroupConversations, {
+    currentUserId: currentClerkId,
+  });
+
+  // Get all conversation IDs (groups + DMs)
+  const dmConversationIds = (conversations ?? [])
+    .filter((c) => !c.isGroup)
+    .map((c) => c._id);
+
+  const groupConversationIds = (groupConversations ?? []).map((c) => c._id);
+
+  const allConversationIds = [...groupConversationIds, ...dmConversationIds];
+
+  const lastMessages =
+    useQuery(
+      api.messages.getLastMessages,
+      allConversationIds.length > 0
+        ? { conversationIds: allConversationIds }
+        : "skip",
+    ) ?? {};
+
+  // Helper to format preview text
+  const getPreview = (conversationId: string, currentClerkId: string) => {
+    const msg = lastMessages[conversationId];
+    if (!msg) return "No messages yet";
+    if (msg.isDeleted) return "Message deleted";
+    const prefix = msg.senderId === currentClerkId ? "You: " : "";
+    const text =
+      msg.content.length > 30 ? msg.content.slice(0, 30) + "..." : msg.content;
+    return prefix + text;
+  };
+
   return (
     <aside className="w-full md:w-60 lg:w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
       {/* Header */}
@@ -83,6 +119,54 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
 
       {/* User list */}
       <div className="flex-1 overflow-y-auto">
+        {/* All Groups section  */}
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Groups
+            </p>
+            <button
+              onClick={() => setShowGroupModal(true)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="Create group"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+
+          {(groupConversations ?? []).length === 0 ? (
+            <p className="text-xs text-muted-foreground px-1">No groups yet</p>
+          ) : (
+            (groupConversations ?? []).map((group) => (
+              <button
+                key={group._id}
+                onClick={() => router.push(`/chat/group/${group._id}`)}
+                className={`w-full flex items-center gap-3 px-2 py-2.5 rounded-md transition-colors text-left ${
+                  pathname === `/chat/group/${group._id}`
+                    ? "bg-slate-200 dark:bg-slate-700"
+                    : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                  <Users size={16} className="text-muted-foreground" />
+                </div>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-sm font-medium truncate">
+                    {group.groupName}
+                  </span>
+                  {/* ✅ Preview */}
+                  <span className="text-xs text-muted-foreground truncate">
+                    {getPreview(group._id, currentClerkId)}
+                  </span>
+                </div>
+                <UnreadBadge
+                  clerkId={currentClerkId}
+                  conversationId={group._id}
+                />
+              </button>
+            ))
+          )}
+        </div>
         {/* All Users section */}
         <div className="p-3">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
@@ -96,6 +180,7 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
             filtered.map((u) => {
               const conversation = (conversations ?? []).find(
                 (c) =>
+                  !c.isGroup &&
                   c.participantIds.includes(u.clerkId) &&
                   c.participantIds.includes(currentClerkId),
               );
@@ -110,6 +195,11 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
                       router.push(`/chat/${u.clerkId}`);
                       setSidebarOpen(false);
                     }}
+                    preview={
+                      conversation
+                        ? getPreview(conversation._id, currentClerkId)
+                        : undefined
+                    }
                   />
                   {conversation && (
                     <div className="pr-2 absolute right-1">
@@ -142,6 +232,9 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
           </span>
         </div>
       </div>
+      {showGroupModal && (
+        <CreateGroupModal onClose={() => setShowGroupModal(false)} />
+      )}
     </aside>
   );
 }
@@ -182,15 +275,19 @@ function UserRow({
       </div>
 
       <div className="flex flex-col min-w-0">
-        <span className="text-sm font-medium truncate">{name}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium truncate">{name}</span>
+          {/* ✅ Online dot moved inline next to name */}
+          {online && (
+            <span className="text-[10px] text-green-500 font-medium shrink-0">
+              ● Online
+            </span>
+          )}
+        </div>
+        {/* ✅ Preview as subtitle — replaces the Online/Offline line */}
         <span className="text-xs text-muted-foreground truncate">
-          {online ? "Online" : "Offline"}
+          {preview ?? (online ? "Online" : "Offline")}
         </span>
-        {preview && (
-          <span className="text-xs text-muted-foreground truncate">
-            {preview}
-          </span>
-        )}
       </div>
     </button>
   );
