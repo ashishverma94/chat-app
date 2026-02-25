@@ -45,16 +45,11 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
   const { setSidebarOpen } = useGlobalStore();
   const pathname = usePathname();
 
-  const allUsers = useQuery(api.users.getAllUsers, {
-    currentClerkId,
-  });
-
-  const filtered = (allUsers ?? []).filter((u) =>
-    u.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const allUsers = useQuery(api.users.getAllUsers, { currentClerkId });
 
   usePresence(currentClerkId);
   const allPresence = useQuery(api.presence.getAllPresence) ?? [];
+
   const isOnline = (clerkId: string) => {
     const record = allPresence.find((p) => p.clerkId === clerkId);
     if (!record) return false;
@@ -65,19 +60,16 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
     currentUserId: currentClerkId,
   });
 
-  // FOR GROUPS
   const [showGroupModal, setShowGroupModal] = useState(false);
   const groupConversations = useQuery(api.conversations.getGroupConversations, {
     currentUserId: currentClerkId,
   });
 
-  // Get all conversation IDs (groups + DMs)
   const dmConversationIds = (conversations ?? [])
     .filter((c) => !c.isGroup)
     .map((c) => c._id);
 
   const groupConversationIds = (groupConversations ?? []).map((c) => c._id);
-
   const allConversationIds = [...groupConversationIds, ...dmConversationIds];
 
   const lastMessages =
@@ -88,8 +80,7 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
         : "skip",
     ) ?? {};
 
-  // Helper to format preview text
-  const getPreview = (conversationId: string, currentClerkId: string) => {
+  const getPreview = (conversationId: string) => {
     const msg = lastMessages[conversationId];
     if (!msg) return "No messages yet";
     if (msg.isDeleted) return "Message deleted";
@@ -98,6 +89,15 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
       msg.content.length > 30 ? msg.content.slice(0, 30) + "..." : msg.content;
     return prefix + text;
   };
+
+  // ✅ Filter both users AND groups by search term
+  const filteredUsers = (allUsers ?? []).filter((u) =>
+    u.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const filteredGroups = (groupConversations ?? []).filter((g) =>
+    (g.groupName ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
     <aside className="w-full md:w-60 lg:w-72 border-r-2 border-slate-200 dark:border-slate-800 flex flex-col h-full">
@@ -114,7 +114,7 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
       <div className="p-4 relative border-b border-slate-200 dark:border-slate-800">
         <input
           type="text"
-          placeholder="Search users..."
+          placeholder="Search users or groups..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-9 pr-3 py-3 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-300"
@@ -122,9 +122,9 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
         <Search className="absolute top-[50%] left-6 -translate-y-[50%] text-slate-400 size-5" />
       </div>
 
-      {/* User list */}
+      {/* List */}
       <div className="flex-1 overflow-y-auto">
-        {/* All Groups section  */}
+        {/* Groups section */}
         <div className="p-3 border-t border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between mb-2 px-1">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -139,18 +139,26 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
             </button>
           </div>
 
-          {(groupConversations ?? []).length === 0 ? (
-            <p className="text-xs text-muted-foreground px-1">No groups yet</p>
+          {groupConversations === undefined ? (
+            <div className="flex flex-col gap-2">
+              {[1, 2].map((_, i) => (
+                <Skeleton key={i} height="58px" />
+              ))}
+            </div>
+          ) : filteredGroups.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-1">
+              {search ? `No groups matching "${search}"` : "No groups yet"}
+            </p>
           ) : (
-            (groupConversations ?? []).map((group) => (
+            filteredGroups.map((group) => (
               <button
                 key={group._id}
                 onClick={() => {
-                  router.push(`/chat/group/${group._id}`);
+                  router.push(`/chat/${group._id}`);
                   setSidebarOpen(false);
                 }}
                 className={`w-full mt-1 flex items-center gap-3 px-2 py-2.5 rounded-md transition-colors text-left ${
-                  pathname === `/chat/group/${group._id}`
+                  pathname === `/chat/${group._id}`
                     ? "bg-slate-200 dark:bg-slate-700"
                     : "hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
@@ -159,12 +167,13 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
                   <Users size={16} className="text-muted-foreground" />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
+                  {/* ✅ Highlight matching search text in group name */}
                   <span className="text-sm font-medium truncate">
-                    {group.groupName}
+                    {highlightMatch(group.groupName ?? "", search)}
                   </span>
-                  {/* ✅ Preview */}
                   <span className="text-xs text-muted-foreground truncate">
-                    {getPreview(group._id, currentClerkId)}
+                    {group.participantIds.length} members ·{" "}
+                    {getPreview(group._id)}
                   </span>
                 </div>
                 <UnreadBadge
@@ -175,21 +184,24 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
             ))
           )}
         </div>
-        {/* All Users section */}
+
+        {/* Users section */}
         <div className="p-3">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
             All Users
           </p>
-          {filtered === undefined ? (
-            <div className=" flex flex-col gap-2 text-muted-foreground px-1">
-              {[1, 2, 3,4].map((item, index) => {
-                return <Skeleton height="58px" key={index} />;
-              })}
+          {allUsers === undefined ? (
+            <div className="flex flex-col gap-2 text-muted-foreground px-1">
+              {[1, 2, 3, 4].map((_, i) => (
+                <Skeleton key={i} height="58px" />
+              ))}
             </div>
-          ) : filtered.length === 0 ? (
-            <p className="text-xs text-muted-foreground px-1">No users found</p>
+          ) : filteredUsers.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-1">
+              {search ? `No users matching "${search}"` : "No users found"}
+            </p>
           ) : (
-            filtered.map((u) => {
+            filteredUsers.map((u) => {
               const conversation = (conversations ?? []).find(
                 (c) =>
                   !c.isGroup &&
@@ -203,14 +215,13 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
                     imageUrl={u.imageUrl}
                     active={pathname === `/chat/${u.clerkId}`}
                     online={isOnline(u.clerkId)}
+                    search={search}
                     onClick={() => {
                       router.push(`/chat/${u.clerkId}`);
                       setSidebarOpen(false);
                     }}
                     preview={
-                      conversation
-                        ? getPreview(conversation._id, currentClerkId)
-                        : undefined
+                      conversation ? getPreview(conversation._id) : undefined
                     }
                   />
                   {conversation && (
@@ -228,7 +239,7 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
         </div>
       </div>
 
-      {/* Current user info */}
+      {/* Current user footer */}
       <div className="p-4 h-20 border-t-2 border-slate-200 dark:border-slate-800 hidden md:flex items-center gap-3">
         {user?.imageUrl && (
           <img
@@ -244,10 +255,27 @@ function Sidebar({ currentClerkId }: { currentClerkId: string }) {
           </span>
         </div>
       </div>
+
       {showGroupModal && (
         <CreateGroupModal onClose={() => setShowGroupModal(false)} />
       )}
     </aside>
+  );
+}
+
+// ✅ Highlights matching search text in yellow
+function highlightMatch(text: string, search: string) {
+  if (!search.trim()) return text;
+  const idx = text.toLowerCase().indexOf(search.toLowerCase());
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 dark:bg-yellow-800 text-inherit rounded-sm">
+        {text.slice(idx, idx + search.length)}
+      </mark>
+      {text.slice(idx + search.length)}
+    </>
   );
 }
 
@@ -258,6 +286,7 @@ function UserRow({
   active,
   online,
   preview,
+  search = "",
 }: {
   name: string;
   imageUrl: string;
@@ -265,6 +294,7 @@ function UserRow({
   active?: boolean;
   online?: boolean;
   preview?: string;
+  search?: string;
 }) {
   return (
     <button
@@ -288,15 +318,16 @@ function UserRow({
 
       <div className="flex flex-col min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium truncate">{name}</span>
-          {/* ✅ Online dot moved inline next to name */}
+          {/* ✅ Highlight matching name */}
+          <span className="text-sm font-medium truncate">
+            {highlightMatch(name, search)}
+          </span>
           {online && (
             <span className="text-[10px] text-green-500 font-medium shrink-0">
               ● Online
             </span>
           )}
         </div>
-        {/* ✅ Preview as subtitle — replaces the Online/Offline line */}
         <span className="text-xs text-muted-foreground truncate">
           {preview ?? (online ? "Online" : "Offline")}
         </span>

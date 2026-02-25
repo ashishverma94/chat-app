@@ -54,9 +54,6 @@ export const createGroupConversation = mutation({
     createdBy: v.string(),
   },
   handler: async (ctx, args) => {
-    if (args.participantIds.length < 2) {
-      throw new Error("Group needs at least 2 other members");
-    }
     return await ctx.db.insert("conversations", {
       participantIds: [...args.participantIds, args.createdBy],
       isGroup: true,

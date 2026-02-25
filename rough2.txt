@@ -1,27 +1,28 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
-  Users,
-  WifiOff,
-  SendHorizonal,
   ArrowLeftCircle,
   MessageSquareOff,
+  SendHorizonal,
+  Users,
 } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import ErrorBanner from "@/components/ErrorBanner";
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
 import { useGlobalStore } from "@/store/globalStore";
-import ChatSkeleton from "@/components/ChatSkeleton";
-import { useParams, useRouter } from "next/navigation";
-import FullPageError from "@/components/FullPageError";
 import { MessageBubble } from "@/components/MessageBubble";
 import MessageSkeleton from "@/components/MessageSkeleton";
-import { TypingIndicator } from "@/components/TypingIndicator";
-import { ScrollToBottomButton } from "@/components/ScrollToBottomButton";
-import { PendingMessage, PendingMessages } from "@/components/PendingMessages";
+import ChatSkeleton from "@/components/ChatSkeleton";
+import { Id } from "@/convex/_generated/dataModel";
+
+type MessageStatus = "sending" | "sent" | "failed";
+type PendingMessage = {
+  tempId: string;
+  content: string;
+  status: MessageStatus;
+};
 
 export default function ChatPage() {
   const { userId: chatId } = useParams<{ userId: string }>();
@@ -31,7 +32,6 @@ export default function ChatPage() {
 
   const [input, setInput] = useState("");
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
-  const [retryKey, setRetryKey] = useState(0);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -42,9 +42,11 @@ export default function ChatPage() {
   const prevMessageCount = useRef(0);
 
   const currentClerkId = user?.id ?? "";
+
+  // ✅ Detect if this is a group (Convex IDs) or DM (Clerk user IDs start with "user_")
   const isGroup = !chatId.startsWith("user_");
 
-  // ── DM queries ───────────────────────────────────────────
+  // ── DM only queries ──────────────────────────────────────
   const otherUser = useQuery(
     api.users.getUserByClerkId,
     !isGroup ? { clerkId: chatId } : "skip",
@@ -64,11 +66,11 @@ export default function ChatPage() {
       createConversation({
         currentUserId: currentClerkId,
         otherUserId: chatId,
-      }).catch(() => {});
+      });
     }
-  }, [currentClerkId, chatId, isGroup, retryKey]);
+  }, [currentClerkId, chatId, isGroup]);
 
-  // ── Group queries ────────────────────────────────────────
+  // ── Group only queries ───────────────────────────────────
   const allConversations = useQuery(
     api.conversations.getUserConversations,
     isGroup ? { currentUserId: currentClerkId } : "skip",
@@ -82,9 +84,11 @@ export default function ChatPage() {
     ? (chatId as Id<"conversations">)
     : (dmConversationId ?? null);
 
+  // All users — needed for group avatars/names + reactions
   const allUsers =
     useQuery(api.users.getAllUsers, { currentClerkId: "" }) ?? [];
 
+  // Presence — DM only
   const allPresence =
     useQuery(api.presence.getAllPresence, !isGroup ? {} : "skip") ?? [];
 
@@ -94,6 +98,7 @@ export default function ChatPage() {
     return record.isOnline && Date.now() - record.lastSeen < 20000;
   };
 
+  // Messages
   const messages = useQuery(
     api.messages.getMessages,
     conversationId ? { conversationId } : "skip",
@@ -120,7 +125,7 @@ export default function ChatPage() {
   // Mark as read
   useEffect(() => {
     if (conversationId && currentClerkId) {
-      markAsRead({ clerkId: currentClerkId, conversationId }).catch(() => {});
+      markAsRead({ clerkId: currentClerkId, conversationId });
     }
   }, [conversationId, messages]);
 
@@ -171,7 +176,7 @@ export default function ChatPage() {
     isScrolledUpRef.current = false;
   };
 
-  // Send with pending/retry
+  // Send message with pending/retry support
   const handleSend = async (content?: string) => {
     const text = content ?? input.trim();
     if (!text || !conversationId) return;
@@ -183,7 +188,7 @@ export default function ChatPage() {
       userId: currentClerkId,
       userName: user?.firstName ?? "Someone",
       isTyping: false,
-    }).catch(() => {});
+    });
 
     const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -211,10 +216,6 @@ export default function ChatPage() {
     handleSend(content);
   };
 
-  const handleDismiss = (tempId: string) => {
-    setPendingMessages((prev) => prev.filter((m) => m.tempId !== tempId));
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -222,31 +223,11 @@ export default function ChatPage() {
     }
   };
 
-  // ── Error states ─────────────────────────────────────────
-  if (!isGroup && otherUser === null) {
-    return (
-      <FullPageError
-        title="User not found"
-        description="This user doesn't exist or may have been removed."
-        onRetry={() => router.push("/chat")}
-      />
-    );
-  }
+  // ── Loading states ───────────────────────────────────────
+  if (isGroup && !group) return <ChatSkeleton />;
+  if (!isGroup && !otherUser) return <ChatSkeleton />;
 
-  if (isGroup && allConversations !== undefined && !group) {
-    return (
-      <FullPageError
-        title="Group not found"
-        description="This group doesn't exist or you're not a member."
-        onRetry={() => router.push("/chat")}
-      />
-    );
-  }
-
-  // ── Loading ───────────────────────────────────────────────
-  if (isGroup ? !group : !otherUser) return <ChatSkeleton />;
-
-  // ── Header ────────────────────────────────────────────────
+  // ── Header content ───────────────────────────────────────
   const headerContent = isGroup ? (
     <div className="flex items-center gap-3">
       <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
@@ -306,14 +287,6 @@ export default function ChatPage() {
         {headerContent}
       </div>
 
-      {/* Error banner */}
-      {messages === null && (
-        <ErrorBanner
-          message="Couldn't load messages. Check your connection."
-          onRetry={() => setRetryKey((k) => k + 1)}
-        />
-      )}
-
       {/* Messages */}
       <div
         ref={scrollContainerRef}
@@ -322,14 +295,8 @@ export default function ChatPage() {
       >
         {messages === undefined ? (
           <MessageSkeleton />
-        ) : messages === null ? (
-          <FullPageError
-            title="Failed to load messages"
-            description="We couldn't fetch the messages. Please check your connection and try again."
-            onRetry={() => setRetryKey((k) => k + 1)}
-          />
         ) : messages.length === 0 ? (
-          <div className="text-base h-full flex-col pb-5 flex justify-center items-center gap-2 text-muted-foreground text-center">
+          <div className="text-base h-full flex-col pb-5 flex justify-center items-center gap-2 text-muted-foreground text-center mt-8">
             <MessageSquareOff className="size-8" />
             <span className="whitespace-pre-line">{emptyMessage}</span>
           </div>
@@ -344,83 +311,159 @@ export default function ChatPage() {
               allUsers={allUsers}
               reactionsMap={reactionsMap}
               onDelete={(id) =>
-                deleteMessage({ messageId: id, clerkId: currentClerkId }).catch(
-                  () => {},
-                )
+                deleteMessage({ messageId: id, clerkId: currentClerkId })
               }
               onReact={(id, emoji) =>
                 toggleReaction({
                   messageId: id,
                   clerkId: currentClerkId,
                   emoji,
-                }).catch(() => {})
+                })
               }
             />
           ))
         )}
 
-        <TypingIndicator typingUsers={typingUsers ?? []} isGroup={isGroup} />
+        {/* Typing indicator */}
+        {typingUsers && typingUsers.length > 0 && (
+          <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+            {isGroup && (
+              <span>
+                {typingUsers.map((u: any) => u.userName).join(", ")} is typing
+              </span>
+            )}
+            <span className="flex gap-0.5 mt-1">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="w-2.5 h-2.5 rounded-full bg-muted-foreground animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </span>
+          </div>
+        )}
 
-        <PendingMessages
-          pendingMessages={pendingMessages}
-          onRetry={handleRetry}
-          onDismiss={handleDismiss}
-        />
+        {/* Pending / failed messages */}
+        {pendingMessages.map((pm) => (
+          <div key={pm.tempId} className="flex justify-end">
+            <div className="flex flex-col items-end max-w-72 md:max-w-md lg:max-w-lg">
+              <div
+                className={`px-4 py-2 rounded-2xl text-sm rounded-br-sm transition-opacity ${
+                  pm.status === "sending"
+                    ? "bg-foreground/50 text-background opacity-60"
+                    : "bg-red-500/90 text-white"
+                }`}
+              >
+                <p className="text-base">{pm.content}</p>
+                <p className="text-xs mt-1 text-white/60">
+                  {pm.status === "sending" ? "Sending..." : "Failed to send"}
+                </p>
+              </div>
+              {pm.status === "failed" && (
+                <div className="flex items-center gap-2 mt-1 mr-1">
+                  <span className="text-xs text-red-500 flex items-center gap-1">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    Not delivered
+                  </span>
+                  <button
+                    onClick={() => handleRetry(pm.tempId, pm.content)}
+                    className="text-xs cursor-pointer text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors"
+                  >
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>
+                    Retry
+                  </button>
+                  <button
+                    onClick={() =>
+                      setPendingMessages((prev) =>
+                        prev.filter((m) => m.tempId !== pm.tempId),
+                      )
+                    }
+                    className="text-xs cursor-pointer text-slate-400 hover:text-slate-300 transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
 
         <div ref={bottomRef} className="w-full" />
       </div>
 
-      <ScrollToBottomButton
-        show={showScrollButton}
-        count={unreadScrollCount}
-        onClick={scrollToBottom}
-      />
+      {/* New messages button */}
+      {showScrollButton && unreadScrollCount > 0 && (
+        <div className="flex justify-center pb-2">
+          <button
+            onClick={scrollToBottom}
+            className="flex items-center border-white border-2 gap-2 bg-foreground text-background text-xs font-medium px-4 py-2 rounded-full shadow-lg hover:opacity-90 transition-opacity animate-bounce"
+          >
+            ↓ {unreadScrollCount} New{" "}
+            {unreadScrollCount === 1 ? "message" : "messages"}
+          </button>
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-4 h-20 border-t-2 border-slate-200 dark:border-slate-800 flex gap-3">
-        {messages === null ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground gap-2">
-            <WifiOff size={14} />
-            <span>Can't send messages — connection lost</span>
-          </div>
-        ) : (
-          <>
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                if (!conversationId) return;
-                setTypingMutation({
-                  conversationId,
-                  userId: currentClerkId,
-                  userName: user?.firstName ?? "Someone",
-                  isTyping: true,
-                }).catch(() => {});
-                if (typingTimeoutRef.current)
-                  clearTimeout(typingTimeoutRef.current);
-                typingTimeoutRef.current = setTimeout(() => {
-                  setTypingMutation({
-                    conversationId,
-                    userId: currentClerkId,
-                    userName: user?.firstName ?? "Someone",
-                    isTyping: false,
-                  }).catch(() => {});
-                }, 2000);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={`Message ${placeholderName}...`}
-              className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <button
-              onClick={() => handleSend()}
-              disabled={!input.trim()}
-              className={`${input ? "bg-slate-800" : "bg-foreground"} text-background px-3 py-2 rounded-full text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity`}
-            >
-              <SendHorizonal />
-            </button>
-          </>
-        )}
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            if (!conversationId) return;
+            setTypingMutation({
+              conversationId,
+              userId: currentClerkId,
+              userName: user?.firstName ?? "Someone",
+              isTyping: true,
+            });
+            if (typingTimeoutRef.current)
+              clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+              setTypingMutation({
+                conversationId,
+                userId: currentClerkId,
+                userName: user?.firstName ?? "Someone",
+                isTyping: false,
+              });
+            }, 2000);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={`Message ${placeholderName}...`}
+          className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
+        />
+        <button
+          onClick={() => handleSend()}
+          disabled={!input.trim()}
+          className={`${input ? "bg-slate-800" : "bg-foreground"} text-background px-3 py-2 rounded-full text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity`}
+        >
+          <SendHorizonal />
+        </button>
       </div>
     </div>
   );
