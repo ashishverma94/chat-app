@@ -359,7 +359,7 @@ export default function ChatPage() {
           ))
         )}
 
-        <TypingIndicator typingUsers={typingUsers ?? []} isGroup={isGroup} />
+        <TypingIndicator typingUsers={typingUsers ?? []} isGroup = {isGroup} />
 
         <PendingMessages
           pendingMessages={pendingMessages}

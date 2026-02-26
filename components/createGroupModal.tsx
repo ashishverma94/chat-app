@@ -37,7 +37,7 @@ export function CreateGroupModal({ onClose }: { onClose: () => void }) {
         createdBy: currentClerkId,
       });
       onClose();
-      router.push(`/chat/group/${id}`);
+      router.push(`/chat/${id}`);
     } finally {
       setLoading(false);
     }

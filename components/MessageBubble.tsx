@@ -5,7 +5,6 @@ import { formatMessageTime } from "@/utils/formatTime";
 import { MessageReactions, EmojiPicker } from "@/components/MessageReactions";
 import { Id } from "@/convex/_generated/dataModel";
 
-// ─── Types ───────────────────────────────────────────────
 type Reaction = { emoji: string; clerkId: string };
 
 type Message = {

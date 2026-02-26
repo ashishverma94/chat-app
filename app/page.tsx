@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { Unauthenticated } from "convex/react";
+import { Authenticated, Unauthenticated } from "convex/react";
 
 export default function Home() {
   return (
@@ -12,13 +12,21 @@ export default function Home() {
         <UserButton />
       </header>
       <main className="p-8 flex flex-col gap-8">
-        <h1 className="text-4xl font-bold text-center">
-          Chat App
-        </h1>
+        <h1 className="text-4xl font-bold text-center">Chat App</h1>
 
         <Unauthenticated>
           <SignInForm />
         </Unauthenticated>
+        <Authenticated>
+          <div className="flex flex-col gap-8 w-96 mx-auto justify-center items-center">
+            <Link
+              className="bg-[black] w-30 px-2 py-2 flex justify-center items-center rounded-lg text-white"
+              href={"/chat"}
+            >
+              Go to Chat
+            </Link>
+          </div>
+        </Authenticated>
       </main>
     </>
   );

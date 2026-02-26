@@ -132,3 +132,31 @@
   --color-bprimary:#57F527;
   --color-bsecondary:#B9F7A6
 }
+
+
+/* change scrollbar style  */
+.scroll::-webkit-scrollbar {
+  width: 4px;
+  margin-right: 4px;
+}
+
+.no-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+  width: 20px;
+}
+
+.scroll::-webkit-scrollbar-track-piece {
+  background: transparent;
+  width: 20px;
+}
+
+.scroll::-webkit-scrollbar-thumb {
+  width: 4px;
+  border-radius: 4px;
+  background: #dedddd;
+  outline: 4px solid #fff;
+}
