@@ -12,16 +12,17 @@ export default defineSchema({
   conversations: defineTable({
     participantIds: v.array(v.string()), // clerkIds
     isGroup: v.optional(v.boolean()),
-  groupName: v.optional(v.string()),
-  groupImage: v.optional(v.string()),
-  createdBy: v.optional(v.string()),
+    groupName: v.optional(v.string()),
+    groupImage: v.optional(v.string()),
+    createdBy: v.optional(v.string()),
   }),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
-    senderId: v.string(), // clerkId
+    senderId: v.string(),
     content: v.string(),
     createdAt: v.number(),
+    storageId: v.optional(v.id("_storage")),
     isDeleted: v.optional(v.boolean()),
   }).index("by_conversation", ["conversationId"]),
 

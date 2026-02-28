@@ -7,18 +7,26 @@ export const getOrCreateConversation = mutation({
     otherUserId: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if conversation already exists
-    const existing = await ctx.db.query("conversations").collect();
-    const found = existing.find(
-      (c) =>
-        c.participantIds.includes(args.currentUserId) &&
-        c.participantIds.includes(args.otherUserId)
-    );
-    if (found) return found._id;
+    const { currentUserId, otherUserId } = args;
 
-    // Create new conversation
+    // ✅ Find existing DM — must NOT be a group
+    const allConversations = await ctx.db.query("conversations").collect();
+
+    const existing = allConversations.find(
+      (c) =>
+        !c.isGroup &&                                          // ✅ DMs only
+        c.participantIds.includes(currentUserId) &&
+        c.participantIds.includes(otherUserId) &&
+        c.participantIds.length === 2                         // ✅ exactly 2 participants
+    );
+
+    if (existing) return existing._id;
+
+    // Create new DM conversation
     return await ctx.db.insert("conversations", {
-      participantIds: [args.currentUserId, args.otherUserId],
+      participantIds: [currentUserId, otherUserId],
+      isGroup: false,
+      createdBy: currentUserId,
     });
   },
 });
@@ -37,13 +45,19 @@ export const getConversationId = query({
     otherUserId: v.string(),
   },
   handler: async (ctx, args) => {
-    const all = await ctx.db.query("conversations").collect();
-    const found = all.find(
+    const { currentUserId, otherUserId } = args;
+
+    const allConversations = await ctx.db.query("conversations").collect();
+
+    const conversation = allConversations.find(
       (c) =>
-        c.participantIds.includes(args.currentUserId) &&
-        c.participantIds.includes(args.otherUserId)
+        !c.isGroup &&                                        // ✅ DMs only
+        c.participantIds.includes(currentUserId) &&
+        c.participantIds.includes(otherUserId) &&
+        c.participantIds.length === 2                       // ✅ exactly 2 participants
     );
-    return found?._id ?? null;
+
+    return conversation?._id ?? null;
   },
 });
 
@@ -68,7 +82,7 @@ export const getGroupConversations = query({
   handler: async (ctx, args) => {
     const all = await ctx.db.query("conversations").collect();
     return all.filter(
-      (c) => c.isGroup && c.participantIds.includes(args.currentUserId)
+      (c) => c.isGroup && c.participantIds.includes(args.currentUserId),
     );
   },
 });

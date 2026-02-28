@@ -5,12 +5,15 @@ import { formatMessageTime } from "@/utils/formatTime";
 import { MessageReactions, EmojiPicker } from "@/components/MessageReactions";
 import { Id } from "@/convex/_generated/dataModel";
 
+// ─── Types ───────────────────────────────────────────────
 type Reaction = { emoji: string; clerkId: string };
 
 type Message = {
   _id: Id<"messages">;
   senderId: string;
   content: string;
+  imageUrl?: string | null; // ✅ resolved at query time, not stored in schema
+  storageId?: Id<"_storage"> | null;
   createdAt: number;
   isDeleted?: boolean;
 };
@@ -76,6 +79,7 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+// ─── Emoji React Button ───────────────────────────────────
 function ReactButton({
   pickerOpen,
   onToggle,
@@ -99,13 +103,10 @@ function ReactButton({
       >
         😊
       </button>
-      {/* ✅ Picker aligns based on message side */}
       {pickerOpen && (
         <div
           className={`absolute bottom-8 z-50 flex gap-1 bg-background border border-slate-200 dark:border-slate-700 rounded-full px-2 py-1.5 shadow-lg whitespace-nowrap ${
-            isMe
-              ? "right-0" // ✅ my messages → expands leftward, never clips right
-              : "left-0" // ✅ others → expands rightward, away from sidebar
+            isMe ? "right-0" : "left-0"
           }`}
           onClick={(e) => e.stopPropagation()}
         >
@@ -124,6 +125,69 @@ function ReactButton({
   );
 }
 
+// ─── Image Viewer (full screen tap) ──────────────────────
+function BubbleImage({ url }: { url: string }) {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  return (
+    <>
+      <div className="relative max-w-55 w-full rounded-xl overflow-hidden mb-1">
+        {/* ✅ Skeleton shimmer shown while loading */}
+        {!loaded && !error && (
+          <div className="absolute inset-0 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-xl" />
+        )}
+
+        {error ? (
+          <div className="w-55 h-32 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-xl text-xs text-muted-foreground">
+            Failed to load image
+          </div>
+        ) : (
+          <img
+            src={url}
+            alt="Sent image"
+            onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setFullscreen(true);
+            }}
+            className={`w-full object-cover cursor-pointer hover:opacity-95 transition-opacity duration-300 ${
+              loaded ? "opacity-100" : "opacity-0"
+            }`}
+            // ✅ This is the key — browser loads image top-to-bottom naturally
+            // opacity-0 → opacity-100 fade reveals it as it loads
+            decoding="async"
+            loading="lazy"
+          />
+        )}
+      </div>
+
+      {/* Fullscreen overlay */}
+      {fullscreen && (
+        <div
+          className="fixed inset-0 z-100 bg-black/90 flex items-center justify-center"
+          onClick={() => setFullscreen(false)}
+        >
+          <img
+            src={url}
+            alt="Full size"
+            className="max-w-[95vw] max-h-[95vh] object-contain rounded-lg"
+          />
+          <button
+            className="absolute top-4 right-4 text-white text-2xl font-bold hover:opacity-70"
+            onClick={() => setFullscreen(false)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────
 export function MessageBubble({
   msg,
   isMe,
@@ -144,6 +208,10 @@ export function MessageBubble({
   const senderName = sender?.name ?? "Unknown";
   const senderImage = sender?.imageUrl ?? "";
 
+  // ✅ Image is now resolved by getMessages query — just read it directly
+  const hasImage = !!msg.imageUrl;
+  const hasText = !!msg.content?.trim();
+
   const longPress = useLongPress(() => {
     if (!msg.isDeleted) {
       if (bubbleRef.current) {
@@ -162,7 +230,7 @@ export function MessageBubble({
         setPickerOpen(false);
       }}
     >
-      {/* ── Group sender avatar (left side, others only) ── */}
+      {/* Group sender avatar */}
       {isGroup && !isMe && (
         <img
           src={senderImage}
@@ -171,7 +239,7 @@ export function MessageBubble({
         />
       )}
 
-      {/* ── Message column ── */}
+      {/* Message column */}
       <div className="flex flex-col max-w-72 md:max-w-md lg:max-w-lg relative">
         {/* Group sender name */}
         {isGroup && !isMe && (
@@ -183,35 +251,53 @@ export function MessageBubble({
         <div
           className={`flex items-end gap-1.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
         >
-          {/* ── Bubble ── */}
+          {/* Bubble */}
           <div
             ref={bubbleRef}
             {...longPress}
             className={`px-4 py-2 rounded-2xl text-sm select-none ${
-              isMe
-                ? "bg-foreground text-background rounded-br-sm"
-                : "bg-slate-100 dark:bg-slate-800 text-foreground rounded-bl-sm"
+              // ✅ Image-only messages get less padding, no bg needed
+              hasImage && !hasText
+                ? "p-1 bg-transparent"
+                : isMe
+                  ? "bg-foreground text-background rounded-br-sm"
+                  : "bg-slate-100 dark:bg-slate-800 text-foreground rounded-bl-sm"
             }`}
           >
             {msg.isDeleted ? (
-              <p className="italic text-base">This message was deleted</p>
+              <p className={`italic text-base ${isMe ? "" : ""}`}>
+                This message was deleted
+              </p>
             ) : (
-              <p className="text-base">{msg.content}</p>
+              <>
+                {/* ✅ Image — rendered from query-resolved URL */}
+                {hasImage && <BubbleImage url={msg.imageUrl!} />}
+
+                {/* Text — only if present */}
+                {hasText && <p className="text-base">{msg.content}</p>}
+              </>
             )}
+
+            {/* Timestamp */}
             <p
-              className={`text-xs mt-1 ${isMe ? "text-background/60" : "text-muted-foreground"}`}
+              className={`text-xs mt-1 ${
+                hasImage && !hasText
+                  ? "text-muted-foreground" // image-only: neutral timestamp
+                  : isMe
+                    ? "text-background/60"
+                    : "text-muted-foreground"
+              }`}
             >
               {formatMessageTime(msg.createdAt)}
               {msg.isDeleted && " · deleted"}
             </p>
           </div>
 
-          {/* ── Action buttons — sit next to bubble ── */}
+          {/* Action buttons */}
           {!msg.isDeleted && (
             <div
               className={`flex items-center gap-1 mb-5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
             >
-              {/* Emoji react button */}
               <ReactButton
                 pickerOpen={pickerOpen}
                 onToggle={() => setPickerOpen((p) => !p)}
@@ -221,14 +307,12 @@ export function MessageBubble({
                 }}
                 isMe={isMe}
               />
-
-              {/* Delete button — only for own messages */}
               {isMe && <DeleteButton onClick={() => onDelete(msg._id)} />}
             </div>
           )}
         </div>
 
-        {/* ── Reaction counts ── */}
+        {/* Reaction counts */}
         {msgReactions.length > 0 && (
           <MessageReactions
             messageId={msg._id}
@@ -239,7 +323,7 @@ export function MessageBubble({
           />
         )}
 
-        {/* ── Mobile action menu (long press) ── */}
+        {/* Mobile action menu */}
         {showMenu && !msg.isDeleted && (
           <div
             className={`absolute z-50 flex flex-col gap-1 bg-background border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 min-w-45 ${
@@ -247,7 +331,6 @@ export function MessageBubble({
             } ${menuAbove ? "bottom-full mb-2" : "top-full mt-2"}`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Emoji row */}
             <div className="flex justify-around py-1.5 border-b border-slate-100 dark:border-slate-800">
               {EMOJIS.map((emoji) => (
                 <button
@@ -263,7 +346,6 @@ export function MessageBubble({
               ))}
             </div>
 
-            {/* Delete — own messages only */}
             {isMe && (
               <button
                 onClick={() => {
@@ -291,7 +373,6 @@ export function MessageBubble({
               </button>
             )}
 
-            {/* Cancel */}
             <button
               onClick={() => setShowMenu(false)}
               className="flex items-center justify-center px-3 py-2 text-sm text-muted-foreground hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors w-full"

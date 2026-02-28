@@ -22,6 +22,8 @@ import MessageSkeleton from "@/components/MessageSkeleton";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { ScrollToBottomButton } from "@/components/ScrollToBottomButton";
 import { PendingMessage, PendingMessages } from "@/components/PendingMessages";
+import { ImagePreview } from "@/components/chat/ImagePreview";
+import { ImageUploadButton } from "@/components/chat/ImgUploadBtn";
 
 export default function ChatPage() {
   const { userId: chatId } = useParams<{ userId: string }>();
@@ -30,7 +32,15 @@ export default function ChatPage() {
   const { setSidebarOpen } = useGlobalStore();
 
   const [input, setInput] = useState("");
+
+  // PENDING IMAGES AND MESSAGES
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
+  const [pendingImage, setPendingImage] = useState<{
+    storageId: Id<"_storage"> | null;
+    previewUrl: string;
+  } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   const [retryKey, setRetryKey] = useState(0);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -43,6 +53,8 @@ export default function ChatPage() {
 
   const currentClerkId = user?.id ?? "";
   const isGroup = !chatId.startsWith("user_");
+
+  const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
 
   // ── DM queries ───────────────────────────────────────────
   const otherUser = useQuery(
@@ -174,8 +186,13 @@ export default function ChatPage() {
   // Send with pending/retry
   const handleSend = async (content?: string) => {
     const text = content ?? input.trim();
-    if (!text || !conversationId) return;
+    if (!text && !pendingImage) return;
+    if (!conversationId) return;
+    if (pendingImage?.storageId === null) return;
     if (!content) setInput("");
+
+    const imageToSend = pendingImage;
+    setPendingImage(null);
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     setTypingMutation({
@@ -197,6 +214,7 @@ export default function ChatPage() {
         conversationId,
         senderId: currentClerkId,
         content: text,
+        storageId: imageToSend?.storageId as any,
       });
       setPendingMessages((prev) => prev.filter((m) => m.tempId !== tempId));
     } catch {
@@ -359,7 +377,7 @@ export default function ChatPage() {
           ))
         )}
 
-        <TypingIndicator typingUsers={typingUsers ?? []} isGroup = {isGroup} />
+        <TypingIndicator typingUsers={typingUsers ?? []} isGroup={isGroup} />
 
         <PendingMessages
           pendingMessages={pendingMessages}
@@ -376,8 +394,40 @@ export default function ChatPage() {
         onClick={scrollToBottom}
       />
 
+      {/* Image preview above input */}
+        {pendingImage && (
+          <ImagePreview
+            previewUrl={pendingImage.previewUrl}
+            progress={uploadProgress}
+            onRemove={() => {
+              setPendingImage(null);
+              setUploadProgress(0);
+            }}
+          />
+        )}
+    
+
       {/* Input */}
-      <div className="p-4 h-20 border-t-2 border-slate-200 dark:border-slate-800 flex gap-3">
+      <div className="p-4 h-20 relative border-t-2 border-slate-200 dark:border-slate-800 flex gap-3">
+        <div className=" absolute left-7 pb-3 top-1/2 -translate-y-[25%]">
+          <ImageUploadButton
+            onFileSelected={(previewUrl) => {
+              // ✅ Show preview IMMEDIATELY when file is picked — before upload starts
+              setPendingImage({ storageId: null, previewUrl });
+              setUploadProgress(0);
+            }}
+            onUpload={(storageId) => {
+              // ✅ Just update storageId once upload completes
+              setPendingImage((prev) => (prev ? { ...prev, storageId } : null));
+            }}
+            onProgress={setUploadProgress}
+            onError={() => {
+              setPendingImage(null);
+              setUploadProgress(0);
+            }}
+          />
+        </div>
+
         {messages === null ? (
           <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground gap-2">
             <WifiOff size={14} />
@@ -410,12 +460,15 @@ export default function ChatPage() {
               }}
               onKeyDown={handleKeyDown}
               placeholder={`Message ${placeholderName}...`}
-              className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className="flex-1 pl-11 pr-4 py-2 text-sm rounded-md border border-slate-400 dark:border-slate-800 bg-background focus:outline-none focus:ring-2 focus:ring-slate-400"
             />
             <button
               onClick={() => handleSend()}
-              disabled={!input.trim()}
-              className={`${input ? "bg-slate-800" : "bg-foreground"} text-background px-3 py-2 rounded-full text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity`}
+              disabled={
+                (!input.trim() && !pendingImage) ||
+                pendingImage?.storageId === null
+              }
+              className={`${input || pendingImage ? "bg-slate-800 cursor-pointer" : "bg-foreground"} text-background px-3 py-2 rounded-full text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity`}
             >
               <SendHorizonal />
             </button>
